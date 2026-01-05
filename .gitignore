@@ -1,0 +1,22 @@
+# Backend
+backend/__pycache__/
+backend/*.py[cod]
+backend/.env
+backend/venv/
+
+# SQL
+database/dumps/*.sql
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# IDEs & OS
+.vscode/
+.idea/
+.DS_Store
+Thumb.db
+
+# Quarto / Docs
+docs/.quarto/
+docs/_site/
