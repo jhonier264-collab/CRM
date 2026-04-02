@@ -6,6 +6,7 @@ __pycache__/
 # Backend
 backend/.env
 backend/venv/
+.env
 
 # SQL
 database/dumps/*.sql
