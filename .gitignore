@@ -2,11 +2,11 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.env
 
 # Backend
 backend/.env
 backend/venv/
-.env
 
 # SQL
 database/dumps/*.sql
