@@ -25,7 +25,12 @@ const UserRow = ({ user, onDelete }) => {
         {user.position && user.company ? `${user.position}, ${user.company}` : (user.company || '-')}
       </div>
       <div className="user-col labels">
-         {user.labels && <span className="badge-sm">{user.labels[0]}</span>}
+         {user.labels && user.labels.slice(0, 2).map((label, i) => (
+           <span key={i} className="badge-sm" style={{marginRight: '4px'}}>{label}</span>
+         ))}
+         {user.labels && user.labels.length > 2 && (
+           <span className="badge-sm" style={{background: '#f1f3f4', color: '#5f6368', marginRight: '4px'}}>+{user.labels.length - 2}</span>
+         )}
       </div>
       <div className="user-col actions">
         <button className="icon-btn-sm" title="Eliminar" onClick={(e) => {

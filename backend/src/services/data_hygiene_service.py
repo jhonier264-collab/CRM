@@ -1,35 +1,45 @@
+"""
+Encabezado Profesional: Servicio de Higiene y Deduplicación de Datos
+Propósito: Gestiona la limpieza, recuperación y fusión de registros (Deduplicación).
+Por qué: Mantener la integridad de la base de datos y optimizar la calidad de la información SaaS.
+"""
+
 import logging
 from typing import List, Dict, Any
-from src.core.database_manager import DatabaseManager
+from src.core.database_interface import IDatabase
 from src.models.models import User, Company
 
 class DataHygieneService:
-    def __init__(self, db: DatabaseManager):
-        self.db = db
+    def __init__(self, persistence: IDatabase):
+        """
+        Inyección de dependencia: Recibe el motor de persistencia.
+        """
+        self.persistence = persistence
         self.logger = logging.getLogger(__name__)
 
     # --- Soft Delete & Recovery ---
 
     def list_trash(self, table: str) -> List[Dict[str, Any]]:
-        """Lists items in the recycling bin."""
+        """Lista elementos en la papelera de reciclaje."""
         if table not in ['users', 'companies']: return []
-        return self.db.execute_query(f"SELECT * FROM {table} WHERE deleted_at IS NOT NULL")
+        command = f"SELECT * FROM {table} WHERE deleted_at IS NOT NULL"
+        return self.persistence.execute_command(command)
 
     def restore_item(self, table: str, item_id: int):
-        """Restores a soft-deleted item."""
+        """Restaura un elemento borrado de forma suave."""
         sql = f"UPDATE {table} SET deleted_at = NULL WHERE id = %s"
-        return self.db.execute_query(sql, (item_id,), commit=True, is_select=False)
+        return self.persistence.execute_command(sql, (item_id,), perform_commit=True, fetch_results=False)
 
     def soft_delete_item(self, table: str, item_id: int):
-        """Moves an item to the recycling bin."""
+        """Mueve un elemento a la papelera (Soft Delete)."""
         sql = f"UPDATE {table} SET deleted_at = CURRENT_TIMESTAMP WHERE id = %s"
-        return self.db.execute_query(sql, (item_id,), commit=True, is_select=False)
+        return self.persistence.execute_command(sql, (item_id,), perform_commit=True, fetch_results=False)
 
     def permanent_delete_item(self, table: str, item_id: int):
-        """PERMANENTLY deletes an item from the database (No Undo)."""
+        """Elimina PERMANENTEMENTE un registro y sus relaciones."""
         if table not in ['users', 'companies']: return False
         
-        with self.db.transaction() as cursor:
+        with self.persistence.start_transaction() as cursor:
             if table == 'users':
                 cursor.execute("DELETE FROM user_companies WHERE user_id = %s", (item_id,))
                 cursor.execute("DELETE FROM phones WHERE user_id = %s", (item_id,))
@@ -67,13 +77,13 @@ class DataHygieneService:
         Intelligent duplicate search using Python normalization for phones.
         """
         # 1. Duplicate Names (SQL is fine for this as they are unique_key bound otherwise)
-        name_dups = self.db.execute_query("""
+        name_dups = self.persistence.execute_command("""
             SELECT first_name, last_name, COUNT(*) as count, GROUP_CONCAT(DISTINCT id) as ids, 'Nombre/Apellido' as reason
             FROM users WHERE deleted_at IS NULL GROUP BY first_name, last_name HAVING count > 1
         """)
 
         # 2. Shared Emails (SQL is fine)
-        email_dups = self.db.execute_query("""
+        email_dups = self.persistence.execute_command("""
             SELECT e.email_address, COUNT(*) as count, GROUP_CONCAT(DISTINCT u.id) as ids, 'Correo Electrónico' as reason
             FROM emails e
             JOIN users u ON e.user_id = u.id
@@ -82,7 +92,7 @@ class DataHygieneService:
         """)
 
         # 3. Shared Phones (Intelligent Python Normalization)
-        all_phones = self.db.execute_query("""
+        all_phones = self.persistence.execute_command("""
             SELECT p.local_number, u.id
             FROM phones p
             JOIN users u ON p.user_id = u.id
@@ -120,15 +130,13 @@ class DataHygieneService:
 
     def merge_users(self, survivor_id: int, duplicate_id: int):
         """
-        Merges duplicate user into survivor with contact deduplication.
+        Fusiona un usuario duplicado en un sobreviviente con deduplicación de contactos.
         """
-        with self.db.transaction() as cursor:
-            # 1. Deduplicate Emails
-            # Get existing emails for survivor
+        with self.persistence.start_transaction() as cursor:
+            # 1. Deduplicar Emails
             cursor.execute("SELECT email_address FROM emails WHERE user_id = %s", (survivor_id,))
             survivor_emails = {row['email_address'].lower() for row in cursor.fetchall()}
             
-            # Get emails for duplicate
             cursor.execute("SELECT id, email_address FROM emails WHERE user_id = %s", (duplicate_id,))
             dup_emails = cursor.fetchall()
             
@@ -138,7 +146,7 @@ class DataHygieneService:
                 else:
                     cursor.execute("UPDATE emails SET user_id = %s WHERE id = %s", (survivor_id, e['id']))
             
-            # 2. Deduplicate Phones (Intelligent Normalization)
+            # 2. Deduplicar Teléfonos (Normalización Inteligente)
             cursor.execute("SELECT local_number FROM phones WHERE user_id = %s", (survivor_id,))
             survivor_phones = {self._normalize_phone(row['local_number']) for row in cursor.fetchall()}
             
@@ -153,21 +161,21 @@ class DataHygieneService:
                     cursor.execute("UPDATE phones SET user_id = %s WHERE id = %s", (survivor_id, p['id']))
                     survivor_phones.add(norm_p)
 
-            # 3. Transfer Addresses (Simple transfer for now)
+            # 3. Transferir Direcciones
             cursor.execute("UPDATE IGNORE addresses SET user_id = %s WHERE user_id = %s", (survivor_id, duplicate_id))
             cursor.execute("DELETE FROM addresses WHERE user_id = %s", (duplicate_id,))
             
-            # 4. Transfer Company Links
+            # 4. Transferir Vínculos con Empresas
             cursor.execute("UPDATE IGNORE user_companies SET user_id = %s WHERE user_id = %s", (survivor_id, duplicate_id))
             cursor.execute("DELETE FROM user_companies WHERE user_id = %s", (duplicate_id,))
 
-            # 5. Soft-delete the duplicate user record
+            # 5. Soft-delete del registro duplicado
             cursor.execute("UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = %s", (duplicate_id,))
             
         return True
 
     def find_company_duplicates(self) -> List[Dict[str, Any]]:
-        """Finds potential duplicate companies."""
+        """Busca posibles empresas duplicadas."""
         sql = """
         SELECT legal_name, tax_id, COUNT(*) as count, GROUP_CONCAT(id) as ids
         FROM companies
@@ -175,14 +183,14 @@ class DataHygieneService:
         GROUP BY legal_name, tax_id
         HAVING count > 1
         """
-        return self.db.execute_query(sql)
+        return self.persistence.execute_command(sql)
 
     def merge_companies(self, survivor_id: int, duplicate_id: int):
         """
-        Merges duplicate company into survivor with contact deduplication.
+        Fusiona una empresa duplicada en una sobreviviente.
         """
-        with self.db.transaction() as cursor:
-            # 1. Deduplicate Emails
+        with self.persistence.start_transaction() as cursor:
+            # 1. Deduplicar Emails
             cursor.execute("SELECT email_address FROM emails WHERE company_id = %s", (survivor_id,))
             survivor_emails = {row['email_address'].lower() for row in cursor.fetchall()}
             
@@ -193,7 +201,7 @@ class DataHygieneService:
                 else:
                     cursor.execute("UPDATE emails SET company_id = %s WHERE id = %s", (survivor_id, e['id']))
             
-            # 2. Deduplicate Phones
+            # 2. Deduplicar Teléfonos
             cursor.execute("SELECT local_number FROM phones WHERE company_id = %s", (survivor_id,))
             survivor_phones = {self._normalize_phone(row['local_number']) for row in cursor.fetchall()}
             
@@ -206,15 +214,15 @@ class DataHygieneService:
                     cursor.execute("UPDATE phones SET company_id = %s WHERE id = %s", (survivor_id, p['id']))
                     survivor_phones.add(norm_p)
             
-            # 3. Transfer Addresses
+            # 3. Transferir Direcciones
             cursor.execute("UPDATE IGNORE addresses SET company_id = %s WHERE company_id = %s", (survivor_id, duplicate_id))
             cursor.execute("DELETE FROM addresses WHERE company_id = %s", (duplicate_id,))
             
-            # 4. Transfer User links
+            # 4. Transferir Vínculos con Usuarios
             cursor.execute("UPDATE IGNORE user_companies SET company_id = %s WHERE company_id = %s", (survivor_id, duplicate_id))
             cursor.execute("DELETE FROM user_companies WHERE company_id = %s", (duplicate_id,))
 
-            # 5. Soft-delete the duplicate company
+            # 5. Soft-delete de la empresa duplicada
             cursor.execute("UPDATE companies SET deleted_at = CURRENT_TIMESTAMP WHERE id = %s", (duplicate_id,))
             
         return True

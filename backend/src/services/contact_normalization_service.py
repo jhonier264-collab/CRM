@@ -23,7 +23,7 @@ class ContactNormalizationService:
         try:
             # Sort by length descending to match longest prefixes first (e.g. +1 340 before +1)
             sql = "SELECT id, phone_code FROM countries WHERE phone_code IS NOT NULL"
-            codes = self.db.execute_query(sql)
+            codes = self.db.execute_command(sql)
             # Normalize codes for matching (remove +)
             for c in codes:
                 c['clean_code'] = re.sub(r'\D', '', str(c['phone_code']))
@@ -66,6 +66,22 @@ class ContactNormalizationService:
             'country_id': detected_country_id,
             'local_number': local_number
         }
+
+    def normalize_name_title(self, name: str) -> str:
+        """Capitaliza nombres (ej: 'pepito perez' -> 'Pepito Perez')."""
+        if not name: return ""
+        return name.strip().title()
+
+    def normalize_company_name(self, name: str) -> str:
+        """Convierte nombres de empresa a mayúscula sostenida (ej: 'acme sa' -> 'ACME SA')."""
+        if not name: return ""
+        return name.strip().upper()
+
+    def is_valid_email(self, email: str) -> bool:
+        """Valida estructuralmente un correo electrónico."""
+        if not email: return False
+        regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        return re.match(regex, email.strip()) is not None
 
     def normalize_email(self, raw_email: str) -> str:
         """Standardizes email to lowercase and trims whitespace."""

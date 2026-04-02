@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "C:\Users\INDELPA\Desktop\Programas\SQL\CRM\debug_backend.py", line 6, in <module>
+    import backend.api_server as api_server
+  File "C:\Users\INDELPA\Desktop\Programas\SQL\CRM\backend\api_server.py", line 12, in <module>
+    from src.core.database_manager import DatabaseManager
+ModuleNotFoundError: No module named 'src'

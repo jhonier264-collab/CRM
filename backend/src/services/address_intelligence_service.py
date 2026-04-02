@@ -23,7 +23,7 @@ class AddressIntelligenceService:
         }
         
         # 1. Resolve Country
-        country = self.db.execute_query(
+        country = self.db.execute_command(
             "SELECT id FROM countries WHERE country_name LIKE %s LIMIT 1", 
             (f"%{country_name}%",)
         )
@@ -31,7 +31,7 @@ class AddressIntelligenceService:
             result['country_id'] = country[0]['id']
             
             # 2. Resolve State within Country
-            state = self.db.execute_query(
+            state = self.db.execute_command(
                 "SELECT id FROM states WHERE country_id = %s AND state_name LIKE %s LIMIT 1",
                 (result['country_id'], f"%{state_name}%")
             )
@@ -39,7 +39,7 @@ class AddressIntelligenceService:
                 result['state_id'] = state[0]['id']
                 
                 # 3. Resolve City within State
-                city = self.db.execute_query(
+                city = self.db.execute_command(
                     "SELECT id FROM cities WHERE state_id = %s AND city_name LIKE %s LIMIT 1",
                     (result['state_id'], f"%{city_name}%")
                 )

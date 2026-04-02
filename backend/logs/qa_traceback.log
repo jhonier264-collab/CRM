@@ -1,0 +1,36 @@
+﻿python : ERROR:src.cor
+e.mysql_repository:Err
+or MySQL ejecutando 
+comando: 1146 
+(42S02): Table 
+'crm.global_users' 
+doesn't exist
+En línea: 1 Carácter: 
+1
++ python backend\tests
+\qa_provisioning.py 
+2>&1 | Out-File 
+-FilePath qa_ ...
++ ~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
+~~
+    + CategoryInfo    
+          : NotSpeci  
+  fied: (ERROR:src.   
+ core....' doesn't    
+ exist:String) []    
+, RemoteException
+    + FullyQualifiedE 
+   rrorId : NativeCo  
+  mmandError
+ 
+ERROR:QA_AUDITOR:Error
+ registrando 
+alpha_corp: 1146 
+(42S02): Table 
+'crm.global_users' 
+doesn't exist
+ERROR:QA_AUDITOR:No 
+se pudieron registrar 
+suficientes tenants 
+para continuar.

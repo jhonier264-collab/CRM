@@ -1,6 +1,9 @@
+# Python Global
+__pycache__/
+*.py[cod]
+*$py.class
+
 # Backend
-backend/__pycache__/
-backend/*.py[cod]
 backend/.env
 backend/venv/
 
@@ -10,6 +13,15 @@ database/dumps/*.sql
 # Frontend
 frontend/node_modules/
 frontend/dist/
+legacy_frontend/
+
+# Temp & Scripts
+check_data.py
+diagnose_output.txt
+diagnose_service.py
+schema_desc.txt
+tables_check.txt
+*.csv
 
 # IDEs & OS
 .vscode/
@@ -20,3 +32,8 @@ Thumb.db
 # Quarto / Docs
 docs/.quarto/
 docs/_site/
+
+# Dev Scripts
+backend/dev_scripts/
+!backend/dev_scripts/setup_b2b_db.py
+!backend/dev_scripts/unified_diagnose_b2b.py

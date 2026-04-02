@@ -12,7 +12,8 @@ class SchemaManager:
     PROTECTED_COLUMNS = {
         'users': ['id', 'agent_id', 'role_id', 'status_id', 'first_name', 'last_name', 'username', 'password_hash', 'rut_nit', 'is_natural_person', 'created_at', 'updated_at'],
         'companies': ['id', 'agent_id', 'status_id', 'rut_nit', 'legal_name', 'created_at'],
-        'relation_types': ['id', 'name', 'inverse_name']
+        'company_relation_types': ['id', 'name', 'inverse_type_id'],
+        'user_relation_types': ['id', 'name', 'inverse_type_id']
     }
 
     def __init__(self, db: IDatabase):
@@ -27,7 +28,7 @@ class SchemaManager:
         try:
             # 1. Alter the physical table
             sql_alter = f"ALTER TABLE `{table}` ADD COLUMN `{column_name}` {data_type} NULL"
-            self.db.execute_query(sql_alter, commit=True, is_select=False)
+            self.db.execute_command(sql_alter, perform_commit=True, fetch_results=False)
             
             # 2. Record in metadata
             sql_meta = """
@@ -35,7 +36,7 @@ class SchemaManager:
             VALUES (%s, %s, %s, %s, 0)
             ON DUPLICATE KEY UPDATE display_name = VALUES(display_name)
             """
-            self.db.execute_query(sql_meta, (table, column_name, display_name, data_type), commit=True, is_select=False)
+            self.db.execute_command(sql_meta, (table, column_name, display_name, data_type), perform_commit=True, fetch_results=False)
             return True
         except Exception as e:
             logger.error(f"Error adding column {column_name} to {table}: {e}")
@@ -49,17 +50,17 @@ class SchemaManager:
             
         try:
             # 1. Check if it's in metadata (to ensure it's a custom column)
-            res = self.db.execute_query("SELECT id FROM custom_columns_metadata WHERE table_name = %s AND column_name = %s", (table, column_name))
+            res = self.db.execute_command("SELECT id FROM custom_columns_metadata WHERE table_name = %s AND column_name = %s", (table, column_name))
             if not res:
                 logger.error(f"Column {column_name} is not a registered custom column.")
                 return False
                 
             # 2. Alter the table
             sql_alter = f"ALTER TABLE `{table}` DROP COLUMN `{column_name}`"
-            self.db.execute_query(sql_alter, commit=True, is_select=False)
+            self.db.execute_command(sql_alter, perform_commit=True, fetch_results=False)
             
             # 3. Remove from metadata
-            self.db.execute_query("DELETE FROM custom_columns_metadata WHERE table_name = %s AND column_name = %s", (table, column_name), commit=True, is_select=False)
+            self.db.execute_command("DELETE FROM custom_columns_metadata WHERE table_name = %s AND column_name = %s", (table, column_name), perform_commit=True, fetch_results=False)
             return True
         except Exception as e:
             logger.error(f"Error removing column {column_name} from {table}: {e}")
@@ -67,4 +68,4 @@ class SchemaManager:
 
     def get_custom_columns(self, table: str) -> List[Dict[str, Any]]:
         """Returns list of custom columns for a table."""
-        return self.db.execute_query("SELECT column_name, display_name, data_type FROM custom_columns_metadata WHERE table_name = %s", (table,))
+        return self.db.execute_command("SELECT column_name, display_name, data_type FROM custom_columns_metadata WHERE table_name = %s", (table,))

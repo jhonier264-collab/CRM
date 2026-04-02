@@ -6,6 +6,7 @@ from datetime import datetime
 @dataclass
 class User:
     id: Optional[int] = None
+    global_user_id: Optional[int] = None
     agent_id: Optional[int] = None
     role_id: Optional[int] = None
     status_id: int = 1
@@ -13,8 +14,6 @@ class User:
     first_name: str = ""
     middle_name: Optional[str] = None
     last_name: str = ""
-    username: Optional[str] = None
-    password_hash: Optional[str] = None
     suffix: Optional[str] = None
     nickname: Optional[str] = None
     phonetic_first_name: Optional[str] = None
@@ -46,6 +45,8 @@ class Company:
     description: Optional[str] = None
     domain: Optional[str] = None
     revenue: float = 0.0
+    employee_count: Optional[int] = 0
+    company_department_id: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

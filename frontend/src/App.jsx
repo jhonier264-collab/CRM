@@ -18,13 +18,30 @@ import {
   MoreVertical,
   CheckCircle2,
   Settings2,
-  FileDown
+  FileDown,
+  LogOut
 } from 'lucide-react'
-import { userService, companyService, hygieneService } from './services/api'
+import { userService, companyService, hygieneService, catalogService, geoService } from './services/api'
 import UserRow from './components/UserRow'
 import DetailView from './components/DetailView'
+import AuthPage from './pages/AuthPage'
 
 function App() {
+  const [user, setUser] = useState(null)
+  const [checkingAuth, setCheckingAuth] = useState(true)
+
+  // Auth Check
+  useEffect(() => {
+    const storedUser = localStorage.getItem('crm_user');
+    const storedToken = localStorage.getItem('crm_token');
+    
+    if (storedUser && storedToken) {
+      setUser(JSON.parse(storedUser));
+    }
+    setCheckingAuth(false);
+  }, []);
+
+  // Dashboard State
   const [darkMode, setDarkMode] = useState(false)
   const [activeTab, setActiveTab] = useState('users')
   const [users, setUsers] = useState([])
@@ -34,6 +51,17 @@ function App() {
   const [selectedItem, setSelectedItem] = useState(null)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [selectedIds, setSelectedIds] = useState([])
+  const [catalogs, setCatalogs] = useState({
+    labels: [],
+    roles: [],
+    statuses: [],
+    agents: [],
+    tags: [],
+    companies: [], // For linking
+    positions: [], // For linking
+    genders: [],
+    countries: []
+  })
 
   // Theme effect
   useEffect(() => {
@@ -45,14 +73,54 @@ function App() {
   }, [darkMode])
 
   // Data fetching
+  // Data fetching
+  const fetchCatalogs = async () => {
+    try {
+        const safeLoad = async (promise, label) => {
+            try {
+                const res = await promise;
+                return res || [];
+            } catch (err) {
+                console.error(`[CATALOG ERROR] ${label} failed:`, err);
+                return []; 
+            }
+        };
+
+        const [agents, tags, statuses, roles, companies, positions, labels, genders, countries] = await Promise.all([
+            safeLoad(catalogService.getAgents(), "agents"),
+            safeLoad(catalogService.getTags(), "tags"),
+            safeLoad(catalogService.getStatuses(), "statuses"),
+            safeLoad(catalogService.getRoles(), "roles"),
+            safeLoad(companyService.list(), "companies"),
+            safeLoad(catalogService.getPositions(), "positions"),
+            safeLoad(catalogService.getLabels(), "labels"),
+            safeLoad(catalogService.getGenders(), "genders"),
+            safeLoad(geoService.getCountries(), "countries")
+        ]);
+        
+        console.log("Catalogs loaded safely:", { agents: agents.length, roles: roles.length, labels: labels.length });
+        setCatalogs({ agents, tags, statuses, roles, companies, positions, labels, genders, countries });
+    } catch (e) {
+        console.error("Critical error in fetchCatalogs:", e);
+    }
+  }
+
   const fetchData = async () => {
+    if (!user) return; // Don't fetch if not logged in
+
     setLoading(true)
     try {
       if (activeTab === 'users') {
         const data = await userService.list()
+        data.forEach(item => {
+           if (item.labels && typeof item.labels === 'string') item.labels = item.labels.split(', ');
+        });
         setUsers(data)
       } else if (activeTab === 'companies') {
         const data = await companyService.list()
+        data.forEach(item => {
+           if (item.labels && typeof item.labels === 'string') item.labels = item.labels.split(', ');
+        });
         setCompanies(data)
       } else if (activeTab === 'trash') {
         const data = await hygieneService.getTrash('users') // Default to users for now
@@ -60,14 +128,30 @@ function App() {
       }
     } catch (error) {
       console.error("Error fetching data:", error)
+      if (error.response && error.response.status === 401) {
+        handleLogout();
+      }
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchData()
-  }, [activeTab])
+    if (user) {
+        fetchData();
+        fetchCatalogs();
+    }
+  }, [activeTab, user])
+
+  const handleLogin = (userData) => {
+    setUser(userData);
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem('crm_user');
+    localStorage.removeItem('crm_token');
+    setUser(null);
+  }
 
   const handleDeleteUser = async (id) => {
     if (window.confirm('¿Mover este contacto a la papelera?')) {
@@ -81,6 +165,18 @@ function App() {
     }
   }
 
+  const handleDeleteCompany = async (id) => {
+    if (window.confirm('¿Mover esta empresa a la papelera?')) {
+      try {
+        await companyService.delete(id)
+        await fetchData()
+      } catch (error) {
+        console.error("Delete failed:", error)
+        alert("Error al eliminar empresa")
+      }
+    }
+  }
+
   const menuItems = [
     { id: 'users', label: 'Contactos', icon: Users },
     { id: 'companies', label: 'Empresas', icon: Building2 },
@@ -88,6 +184,14 @@ function App() {
     { id: 'config', label: 'Configuración', icon: Settings },
     { id: 'trash', label: 'Papelera', icon: Trash2 },
   ]
+
+  if (checkingAuth) {
+    return <div className="loading-screen">Cargando...</div>;
+  }
+
+  if (!user) {
+    return <AuthPage onLogin={handleLogin} />;
+  }
 
   return (
     <div className="layout">
@@ -98,7 +202,7 @@ function App() {
             <Menu size={20} />
           </button>
           <img src="/vite.svg" alt="Logo" className="logo" />
-          <span className="app-title">CRM Industrial</span>
+          <span className="app-title">CRM Industrial [{user.tenant_db || 'Global'}]</span>
         </div>
         
         <div className="search-container">
@@ -116,16 +220,53 @@ function App() {
           >
             {darkMode ? <Sun size={20} /> : <Moon size={20} />}
           </button>
-          <div className="user-avatar">J</div>
+          <div className="user-info" style={{marginRight: '1rem', fontSize: '0.9rem'}}>
+               {user.username}
+          </div>
+          <button className="icon-btn" onClick={handleLogout} title="Cerrar Sesión">
+             <LogOut size={20} />
+          </button>
         </div>
       </header>
 
       <div className="main-container">
         {/* Sidebar */}
         <aside className={`sidebar ${isSidebarCollapsed ? 'collapsed' : ''}`}>
-          <button className="create-btn">
+          <button className="create-btn" onClick={() => {
+            setSelectedItem({
+              id: 0,
+              first_name: '',
+              last_name: '',
+              email: '',
+              status_id: 1,
+              phones: [],
+              emails: [],
+              addresses: [],
+              tags: [],
+              _ui_type: 'users' 
+            });
+          }}>
             <Plus size={24} />
             {!isSidebarCollapsed && <span>Crear contacto</span>}
+          </button>
+
+          <button className="create-btn secondary" style={{marginTop: '0.5rem'}} onClick={() => {
+            setSelectedItem({
+              id: 0,
+              legal_name: '',
+              commercial_name: '',
+              rut_nit: '',
+              domain: '',
+              status_id: 1,
+              phones: [],
+              emails: [],
+              addresses: [],
+              _ui_type: 'companies'
+            });
+            setActiveTab('companies');
+          }}>
+            <Building2 size={24} />
+            {!isSidebarCollapsed && <span>Crear empresa</span>}
           </button>
           
           <nav className="side-nav">
@@ -152,20 +293,51 @@ function App() {
             <DetailView 
               key={selectedItem.id}
               item={selectedItem} 
-              type={selectedItem.legal_name ? 'companies' : 'users'}
+              catalogs={catalogs}
+              setCatalogs={setCatalogs}
+              type={selectedItem._ui_type || (selectedItem.legal_name ? 'companies' : 'users')}
               onClose={() => setSelectedItem(null)}
               onSave={async (updated) => {
                 try {
-                  if (updated.legal_name) {
-                    await companyService.update(updated.id, updated);
+                  if (activeTab === 'companies' || updated.legal_name) {
+                    if (updated.id) {
+                      await companyService.update(updated.id, updated);
+                    } else {
+                      await companyService.create(updated);
+                    }
                   } else {
-                    await userService.update(updated.id, updated);
+                    if (updated.id) {
+                      await userService.update(updated.id, updated);
+                    } else {
+                      await userService.create(updated);
+                    }
                   }
                   setSelectedItem(null);
                   fetchData();
                 } catch (err) {
                   console.error("Error saving updates:", err);
-                  alert("Error al guardar los cambios: " + err.message);
+                  // Return (or re-throw) so DetailView can catch and show the error banner
+                  throw err;
+                }
+              }}
+              onDelete={async (itemToRemove) => {
+                if (itemToRemove.legal_name) {
+                  await handleDeleteCompany(itemToRemove.id);
+                } else {
+                  await handleDeleteUser(itemToRemove.id);
+                }
+                setSelectedItem(null);
+              }}
+              onSelectRelated={async (relatedId, relatedType) => {
+                setLoading(true);
+                try {
+                  const service = relatedType === 'users' ? userService : companyService;
+                  const detail = await service.get(relatedId);
+                  setSelectedItem(detail);
+                } catch (err) {
+                  console.error("Error navigating to related item:", err);
+                } finally {
+                  setLoading(false);
                 }
               }}
             />
@@ -201,6 +373,7 @@ function App() {
                       <div className="user-col rut">RUT / NIT</div>
                       <div className="user-col web">Sitio Web</div>
                       <div className="user-col revenue">Ingresos</div>
+                      <div className="user-col employees">Empleados</div>
                     </>
                   ) : (
                     <>
@@ -257,6 +430,12 @@ function App() {
                        <div className="user-col rut">{c.rut_nit || '-'}</div>
                        <div className="user-col web">{c.domain || '-'}</div>
                        <div className="user-col revenue">{c.revenue ? `$${c.revenue.toLocaleString()}` : '-'}</div>
+                       <div className="user-col employees">
+                         <span title="Contactos vinculados en el CRM">{c.linked_contacts_count || 0}</span>
+                         <span style={{color: '#999', fontSize: '0.8em', marginLeft: '4px'}}>
+                           / {c.total_employees || '-'}
+                         </span>
+                       </div>
                        <div className="user-col actions">
                           <button className="icon-btn-sm"><MoreVertical size={16} /></button>
                        </div>
